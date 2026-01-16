@@ -1,8 +1,10 @@
-import React, { useState, useRef, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
-import { createRandomMailbox, createCustomMailbox } from '../utils/api';
 import MailboxSwitcher from './MailboxSwitcher';
 import { MailboxContext } from '../contexts/MailboxContext';
+import AddressTypeSelector, { AddressType } from './AddressTypeSelector';
+import AddressPreview from './AddressPreview';
+import CustomAddressInput from './CustomAddressInput';
 
 interface HeaderMailboxProps {
   mailbox: Mailbox | null;
@@ -20,17 +22,44 @@ const HeaderMailbox: React.FC<HeaderMailboxProps> = ({
   isLoading
 }) => {
   const { t } = useTranslation();
-  // feat: 统一使用全局通知
-  const { showSuccessMessage, showErrorMessage } = useContext(MailboxContext);
-  const [isCustomMode, setIsCustomMode] = useState(false);
+  // feat: 统一使用全局通知和地址类型管理
+  const { 
+    showSuccessMessage, 
+    showErrorMessage,
+    addressType,
+    setAddressType,
+    previewAddress,
+    generatePreview,
+    createMailboxWithAddressType,
+    isPreviewLoading
+  } = useContext(MailboxContext);
+  const [isCreateMode, setIsCreateMode] = useState(false);
   const [customAddress, setCustomAddress] = useState('');
   const [selectedDomain, setSelectedDomain] = useState(domain);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [customAddressError, setCustomAddressError] = useState<string | null>(null);
+  const [isCustomAddressValid, setIsCustomAddressValid] = useState(false);
 
   useEffect(() => {
     setSelectedDomain(domain);
   }, [domain]);
+
+  // 当进入创建模式且不是自定义类型时，生成预览地址
+  useEffect(() => {
+    if (isCreateMode && addressType !== 'custom' && !previewAddress) {
+      generatePreview();
+    }
+  }, [isCreateMode, addressType, previewAddress, generatePreview]);
+
+  // 当地址类型改变时，如果在创建模式下，生成新的预览地址
+  const handleAddressTypeChange = (type: AddressType) => {
+    setAddressType(type);
+    setCustomAddress('');
+    setCustomAddressError(null);
+    if (type !== 'custom') {
+      generatePreview();
+    }
+  };
   
   if (!mailbox || isLoading) return null;
   
@@ -48,66 +77,59 @@ const HeaderMailbox: React.FC<HeaderMailboxProps> = ({
       });
   };
   
-  // 更换随机邮箱
-  const handleRefreshMailbox = async () => {
-    setIsActionLoading(true);
-    const result = await createRandomMailbox();
-    setIsActionLoading(false);
-    
-    if (result.success && result.mailbox) {
-      onMailboxChange(result.mailbox);
-      // feat: 使用全局通知替换 Tooltip
-      showSuccessMessage(t('mailbox.refreshSuccess'));
-    } else {
-      // fix: 使用全局通知函数显示刷新失败
-      showErrorMessage(t('mailbox.refreshFailed'));
-    }
+  // 重新生成预览地址
+  const handleRegenerate = () => {
+    generatePreview();
   };
   
-  // 创建自定义邮箱
-  const handleCreateCustom = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // 创建新邮箱（使用选择的地址类型）
+  const handleCreateMailbox = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     
     // 清除之前的错误信息
     setCustomAddressError(null);
     
-    if (!customAddress.trim()) {
-      setCustomAddressError(t('mailbox.invalidAddress'));
-      return;
+    // 自定义类型需要验证地址
+    if (addressType === 'custom') {
+      if (!customAddress.trim()) {
+        setCustomAddressError(t('mailbox.invalidAddress'));
+        return;
+      }
+      if (!isCustomAddressValid) {
+        return;
+      }
     }
     
     setIsActionLoading(true);
-    const result = await createCustomMailbox(customAddress);
-    setIsActionLoading(false);
     
-    if (result.success && result.mailbox) {
-      onMailboxChange(result.mailbox);
-      // fix: 使用全局通知函数显示成功
-      showSuccessMessage(t('mailbox.createSuccess'));
+    try {
+      await createMailboxWithAddressType(addressType === 'custom' ? customAddress : undefined);
       
-      // 成功后延迟关闭自定义输入框
+      // 成功后关闭创建模式
       setTimeout(() => {
-        setIsCustomMode(false);
+        setIsCreateMode(false);
         setCustomAddress('');
-      }, 1500);
-
-    } else {
-      const isAddressExistsError = result.error === 'Address already exists' || String(result.error).includes('已存在');
-      if (isAddressExistsError) {
-        // fix: 对于表单内校验错误，保留局部状态提示
-        setCustomAddressError(t('mailbox.addressExists'));
-      } else {
-        // fix: 对于通用创建失败，使用全局通知
-        showErrorMessage(t('mailbox.createFailed'));
-      }
+      }, 500);
+    } catch (error) {
+      console.error('Error creating mailbox:', error);
+    } finally {
+      setIsActionLoading(false);
     }
   };
   
-  // 取消自定义模式
-  const handleCancelCustom = () => {
-    setIsCustomMode(false);
+  // 取消创建模式
+  const handleCancelCreate = () => {
+    setIsCreateMode(false);
     setCustomAddress('');
     setCustomAddressError(null);
+  };
+  
+  // 进入创建模式
+  const handleEnterCreateMode = () => {
+    setIsCreateMode(true);
+    if (addressType !== 'custom') {
+      generatePreview();
+    }
   };
   
   // 移动设备上的邮箱地址显示
@@ -125,83 +147,74 @@ const HeaderMailbox: React.FC<HeaderMailboxProps> = ({
     );
   };
   
-  // 切换域名
-  const handleDomainChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedDomain(e.target.value);
-    // [fix] 切换域名后自动更换邮箱
-    await handleRefreshMailbox();
-  };
-  
   // 按钮基础样式
   const buttonBaseClass = "flex items-center justify-center rounded-md transition-all duration-200";
   const copyButtonClass = `${buttonBaseClass} hover:bg-primary/20 hover:text-primary hover:scale-110 mx-1`;
-  const refreshButtonClass = `${buttonBaseClass} bg-muted hover:bg-primary/20 hover:text-primary hover:scale-110 mr-1`;
-  const customizeButtonClass = `${buttonBaseClass} bg-primary text-primary-foreground hover:bg-primary/80 hover:scale-110`;
+  const createButtonClass = `${buttonBaseClass} bg-primary text-primary-foreground hover:bg-primary/80 hover:scale-110`;
+  
+  // 渲染创建模式的内容
+  const renderCreateMode = () => (
+    <div className="flex flex-col space-y-3">
+      {/* 地址类型选择器 */}
+      <AddressTypeSelector
+        selectedType={addressType}
+        onTypeChange={handleAddressTypeChange}
+        disabled={isActionLoading}
+      />
+      
+      {/* 地址预览或自定义输入 */}
+      <div className="flex items-center space-x-2">
+        {addressType === 'custom' ? (
+          <CustomAddressInput
+            value={customAddress}
+            onChange={setCustomAddress}
+            onValidationChange={setIsCustomAddressValid}
+            domain={selectedDomain}
+            disabled={isActionLoading}
+          />
+        ) : (
+          <AddressPreview
+            address={previewAddress || ''}
+            domain={selectedDomain}
+            onRegenerate={handleRegenerate}
+            isLoading={isPreviewLoading}
+          />
+        )}
+      </div>
+      
+      {/* 操作按钮 */}
+      <div className="flex items-center space-x-2">
+        <button
+          type="button"
+          onClick={handleCancelCreate}
+          className="px-3 py-1.5 text-sm rounded-md bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+          disabled={isActionLoading}
+        >
+          {t('common.cancel')}
+        </button>
+        <button
+          type="button"
+          onClick={handleCreateMailbox}
+          className="px-3 py-1.5 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/80 transition-colors"
+          disabled={isActionLoading || (addressType === 'custom' && !isCustomAddressValid)}
+        >
+          {isActionLoading ? t('common.loading') : t('common.create')}
+        </button>
+      </div>
+      
+      {/* 错误信息显示 */}
+      {customAddressError && (
+        <div className="text-red-500 text-xs px-1">
+          {customAddressError}
+        </div>
+      )}
+    </div>
+  );
   
   return (
     <div className="flex items-center">
-      {isCustomMode ? (
-        <form onSubmit={handleCreateCustom} className="flex flex-col space-y-2">
-          <div className="flex items-center space-x-2">
-            <div className="flex items-center">
-              <input
-                type="text"
-                value={customAddress}
-                onChange={(e) => {
-                  setCustomAddress(e.target.value);
-                  if (customAddressError) setCustomAddressError(null);
-                }}
-                className={`w-32 md:w-40 px-2 py-1 text-sm border rounded-l-md focus:outline-none focus:ring-1 focus:ring-primary ${
-                  customAddressError ? 'border-red-500' : ''
-                }`}
-                placeholder={t('mailbox.customAddressPlaceholder')}
-                disabled={isActionLoading}
-                autoFocus
-              />
-              <span className="flex items-center px-2 py-1 text-sm border-y border-r rounded-r-md bg-muted">
-                @
-                {/* [fix]: 为select包裹一个relative容器，用于绝对定位自定义箭头 */}
-                <div className="relative">
-                  <select 
-                    value={selectedDomain}
-                    onChange={handleDomainChange}
-                    // [fix]: 添加 appearance-none 移除原生样式，并增加padding-right为箭头留出空间
-                    className="appearance-none bg-transparent border-none focus:outline-none pl-1 pr-5"
-                  >
-                    {domains.map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                  {/* [fix]: 添加自定义的下拉箭头图标 */}
-                  <i className="fas fa-chevron-down absolute right-0 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none"></i>
-                </div>
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={handleCancelCustom}
-              className="px-2 py-1 text-sm rounded-md bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
-              disabled={isActionLoading}
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="submit"
-              className="px-2 py-1 text-sm rounded-md bg-primary text-primary-foreground hover:bg-primary/80 transition-colors"
-              disabled={isActionLoading}
-            >
-              {isActionLoading ? t('common.loading') : t('common.create')}
-            </button>
-          </div>
-          
-          {/* 错误信息显示 */}
-          {customAddressError && (
-            <div className="text-red-500 text-xs px-1">
-              {customAddressError}
-            </div>
-          )}
-          
-        </form>
+      {isCreateMode ? (
+        renderCreateMode()
       ) : (
         <>
           <div className="flex items-center">
@@ -213,7 +226,7 @@ const HeaderMailbox: React.FC<HeaderMailboxProps> = ({
                 <div className="relative">
                   <select 
                     value={selectedDomain}
-                    onChange={handleDomainChange}
+                    onChange={(e) => setSelectedDomain(e.target.value)}
                     // [fix]: 添加 appearance-none 移除原生样式，并增加padding-right为箭头留出空间
                     className="appearance-none bg-transparent border-none focus:outline-none pl-1 pr-4 font-medium"
                   >
@@ -244,24 +257,13 @@ const HeaderMailbox: React.FC<HeaderMailboxProps> = ({
                 </button>
               </div>
               
-              <div className="relative">
-                <button
-                  onClick={handleRefreshMailbox}
-                  className={`w-8 h-8 ${refreshButtonClass}`}
-                  disabled={isActionLoading}
-                  title={t('mailbox.refresh')}
-                >
-                  <i className="fas fa-sync-alt text-sm"></i>
-                </button>
-              </div>
-              
               <button
-                onClick={() => setIsCustomMode(true)}
-                className={`w-8 h-8 ${customizeButtonClass}`}
+                onClick={handleEnterCreateMode}
+                className={`w-8 h-8 ${createButtonClass}`}
                 disabled={isActionLoading}
-                title={t('mailbox.customize')}
+                title={t('mailbox.createNew')}
               >
-                <i className="fas fa-edit text-sm"></i>
+                <i className="fas fa-plus text-sm"></i>
               </button>
             </div>
             
@@ -295,24 +297,13 @@ const HeaderMailbox: React.FC<HeaderMailboxProps> = ({
             </div>
             
             <div className="flex items-center">
-              <div className="relative">
-                <button
-                  onClick={handleRefreshMailbox}
-                  className={`w-6 h-6 ${refreshButtonClass}`}
-                  disabled={isActionLoading}
-                  title={t('mailbox.refresh')}
-                >
-                  <i className="fas fa-sync-alt text-xs"></i>
-                </button>
-              </div>
-      
               <button
-                onClick={() => setIsCustomMode(true)}
-                className={`w-6 h-6 ${customizeButtonClass}`}
+                onClick={handleEnterCreateMode}
+                className={`w-6 h-6 ${createButtonClass}`}
                 disabled={isActionLoading}
-                title={t('mailbox.customize')}
+                title={t('mailbox.createNew')}
               >
-                <i className="fas fa-edit text-xs"></i>
+                <i className="fas fa-plus text-xs"></i>
               </button>
             </div>
           </div>

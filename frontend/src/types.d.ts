@@ -1,6 +1,6 @@
 // 允许导入 JSON 文件
 declare module '*.json' {
-  const value: any;
+  const value: Record<string, unknown>;
   export default value;
 }
 
@@ -32,9 +32,11 @@ interface Attachment {
   id: string;
   emailId: string;
   filename: string;
-  contentType: string;
-  content: ArrayBuffer;
+  mimeType: string;
   size: number;
+  createdAt: number;
+  isLarge: boolean;
+  chunksCount: number;
 }
 
 // Toast 相关类型

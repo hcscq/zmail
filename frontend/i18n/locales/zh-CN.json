@@ -30,6 +30,7 @@
   "mailbox": {
     "createRandom": "创建随机邮箱",
     "createCustom": "创建自定义邮箱",
+    "createNew": "创建新邮箱",
     "address": "邮箱地址",
     "customAddress": "自定义地址",
     "customAddressPlaceholder": "输入自定义地址",
@@ -64,7 +65,8 @@
     "confirmClearAllMailboxes": "您确定要清空所有已保存的邮箱吗？（当前使用的邮箱不会被删除）",
     "clearAll": "全部清除",
     "clearAllSuccess": "已清空所有保存的邮箱",
-    "clearAllFailed": "部分邮箱清空失败 ({{count}}个)"
+    "clearAllFailed": "部分邮箱清空失败 ({{count}}个)",
+    "customAddressRequired": "请输入自定义地址"
   },
   "email": {
     "inbox": "收件箱",
@@ -100,6 +102,24 @@
   "settings": {
     "language": "语言",
     "toggleTheme": "切换主题"
+  },
+  "addressType": {
+    "label": "地址类型",
+    "name": "英文名",
+    "random": "随机",
+    "custom": "自定义"
+  },
+  "addressPreview": {
+    "regenerate": "重新生成地址",
+    "preview": "预览"
+  },
+  "customAddress": {
+    "placeholder": "输入自定义地址",
+    "required": "请输入地址",
+    "tooShort": "地址长度不能少于3个字符",
+    "tooLong": "地址长度不能超过30个字符",
+    "invalidChars": "只能包含字母、数字、点、下划线和连字符",
+    "hint": "3-30个字符，可使用字母、数字、点、下划线、连字符"
   },
   "errors": {
     "generic": "发生错误，请稍后重试",

@@ -11,7 +11,11 @@ import {
   getAttachments,
   getAttachment
 } from './database';
-import { generateRandomAddress, } from './utils';
+import { generateRandomAddress, validateCustomAddress } from './utils';
+import { generateNameAddress } from './name-generator';
+
+// Address type for mailbox creation
+type AddressType = 'name' | 'random' | 'custom';
 
 // 创建 Hono 应用
 const app = new Hono<{ Bindings: Env }>();
@@ -57,9 +61,12 @@ app.post('/api/mailboxes', async (c) => {
   try {
     const body = await c.req.json();
     
-    // 验证参数
-    if (body.address && typeof body.address !== 'string') {
-      return c.json({ success: false, error: '无效的邮箱地址' }, 400);
+    // 获取地址类型，默认为 'random'
+    const addressType: AddressType = body.addressType || 'random';
+    
+    // 验证 addressType 参数
+    if (!['name', 'random', 'custom'].includes(addressType)) {
+      return c.json({ success: false, error: '无效的地址类型' }, 400);
     }
     
     const expiresInHours = 24; // 固定24小时有效期
@@ -67,8 +74,45 @@ app.post('/api/mailboxes', async (c) => {
     // 获取客户端IP
     const ip = c.req.header('CF-Connecting-IP') || 'unknown';
     
-    // 生成或使用提供的地址
-    const address = body.address || generateRandomAddress();
+    let address: string;
+    
+    // 根据地址类型生成或验证地址
+    switch (addressType) {
+      case 'name':
+        // 使用英文名生成器
+        address = generateNameAddress();
+        break;
+        
+      case 'custom':
+        // 自定义地址：验证用户提供的地址
+        if (!body.address || typeof body.address !== 'string') {
+          return c.json({ success: false, error: '自定义地址类型需要提供 address 参数' }, 400);
+        }
+        
+        // 验证自定义地址格式
+        const validation = validateCustomAddress(body.address);
+        if (!validation.valid) {
+          return c.json({ success: false, error: `地址格式无效: ${validation.error}` }, 400);
+        }
+        
+        address = body.address.toLowerCase();
+        break;
+        
+      case 'random':
+      default:
+        // 使用随机生成器（兼容旧的 body.address 参数）
+        address = body.address || generateRandomAddress();
+        
+        // 如果提供了自定义地址，也需要验证
+        if (body.address) {
+          const validation = validateCustomAddress(body.address);
+          if (!validation.valid) {
+            return c.json({ success: false, error: `地址格式无效: ${validation.error}` }, 400);
+          }
+          address = body.address.toLowerCase();
+        }
+        break;
+    }
     
     // 检查邮箱是否已存在
     const existingMailbox = await getMailbox(c.env.DB, address);
@@ -83,7 +127,14 @@ app.post('/api/mailboxes', async (c) => {
       ipAddress: ip,
     });
     
-    return c.json({ success: true, mailbox });
+    // 返回结果，包含 addressType 字段
+    return c.json({ 
+      success: true, 
+      mailbox: {
+        ...mailbox,
+        addressType
+      }
+    });
   } catch (error) {
     console.error('创建邮箱失败:', error);
     return c.json({ 

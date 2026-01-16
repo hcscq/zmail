@@ -3,36 +3,149 @@ import { API_BASE_URL } from "../config";
 // API请求基础URL
 const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
 
-// 创建随机邮箱
-export const createRandomMailbox = async (expiresInHours = 24) => {
+// Address type for mailbox creation
+export type AddressType = 'name' | 'random' | 'custom';
+
+// 创建邮箱（支持不同地址类型）
+export const createMailboxWithType = async (
+  addressType: AddressType = 'random',
+  customAddress?: string,
+  expiresInHours = 24
+) => {
   try {
-    const requestBody = JSON.stringify({
+    const requestBody: {
+      addressType: AddressType;
+      expiresInHours: number;
+      address?: string;
+    } = {
+      addressType,
       expiresInHours,
-    });
+    };
+    
+    // 自定义地址类型需要提供 address 参数
+    if (addressType === 'custom' && customAddress) {
+      requestBody.address = customAddress.trim();
+    }
     
     const response = await fetch(apiUrl('/api/mailboxes'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: requestBody,
+      body: JSON.stringify(requestBody),
     });
     
-    if (!response.ok) {
-      throw new Error('Failed to create mailbox');
-    }
-    
     const data = await response.json();
+    
+    if (!response.ok) {
+      return { success: false, error: data.error || 'Failed to create mailbox' };
+    }
     
     if (data.success) {
       return { success: true, mailbox: data.mailbox };
     } else {
-      throw new Error(data.error || 'Unknown error');
+      return { success: false, error: data.error || 'Unknown error' };
     }
   } catch (error) {
     return { success: false, error };
   }
 };
+
+// 创建随机邮箱（保持向后兼容）
+export const createRandomMailbox = async (expiresInHours = 24) => {
+  return createMailboxWithType('random', undefined, expiresInHours);
+};
+
+// 生成预览地址（不创建邮箱，仅获取预览）
+export const generatePreviewAddress = async (addressType: AddressType): Promise<{
+  success: boolean;
+  address?: string;
+  error?: unknown;
+}> => {
+  // 对于自定义类型，不需要生成预览
+  if (addressType === 'custom') {
+    return { success: true, address: '' };
+  }
+  
+  try {
+    // 创建一个临时邮箱来获取地址，然后立即删除
+    // 注意：这是一个简化实现，实际生产环境可能需要专门的预览API
+    // 这里我们在前端模拟生成，避免创建不必要的邮箱
+    
+    if (addressType === 'name') {
+      // 模拟英文名地址生成（与后端逻辑保持一致）
+      const address = generateLocalNameAddress();
+      return { success: true, address };
+    } else {
+      // 随机地址生成
+      const address = generateLocalRandomAddress();
+      return { success: true, address };
+    }
+  } catch (error) {
+    return { success: false, error };
+  }
+};
+
+// 本地生成英文名地址（用于预览）
+function generateLocalNameAddress(): string {
+  const firstNames = [
+    'james', 'john', 'robert', 'michael', 'william', 'david', 'richard', 'joseph',
+    'thomas', 'charles', 'mary', 'patricia', 'jennifer', 'linda', 'elizabeth',
+    'emma', 'olivia', 'ava', 'sophia', 'isabella', 'mia', 'charlotte', 'amelia'
+  ];
+  const lastNames = [
+    'smith', 'johnson', 'williams', 'brown', 'jones', 'garcia', 'miller',
+    'davis', 'rodriguez', 'martinez', 'wilson', 'anderson', 'thomas', 'taylor'
+  ];
+  
+  const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+  const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+  
+  const formats = ['dot', 'underscore', 'plain', 'withDigits'];
+  const format = formats[Math.floor(Math.random() * formats.length)];
+  
+  let address: string;
+  switch (format) {
+    case 'dot':
+      address = `${firstName}.${lastName}`;
+      break;
+    case 'underscore':
+      address = `${firstName}_${lastName}`;
+      break;
+    case 'withDigits': {
+      const digits = Math.floor(Math.random() * 900 + 100).toString().slice(0, Math.random() < 0.5 ? 2 : 3);
+      address = `${firstName}${lastName}${digits}`;
+      break;
+    }
+    default:
+      address = `${firstName}${lastName}`;
+  }
+  
+  // 确保长度在6-20之间
+  if (address.length < 6) {
+    address = `${firstName}${lastName}${Math.floor(Math.random() * 900 + 100)}`;
+  } else if (address.length > 20) {
+    address = `${firstName}${lastName}`.slice(0, 20);
+  }
+  
+  return address;
+}
+
+// 本地生成随机地址（用于预览）
+function generateLocalRandomAddress(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const letters = 'abcdefghijklmnopqrstuvwxyz';
+  const length = Math.floor(Math.random() * 5) + 8; // 8-12 characters
+  
+  // 确保不以数字开头
+  let address = letters[Math.floor(Math.random() * letters.length)];
+  
+  for (let i = 1; i < length; i++) {
+    address += chars[Math.floor(Math.random() * chars.length)];
+  }
+  
+  return address;
+}
 
 // 创建自定义邮箱
 export const createCustomMailbox = async (address: string, expiresInHours = 24) => {

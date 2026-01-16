@@ -1,6 +1,5 @@
-import React, { useContext, useRef } from 'react';
+import React, { useContext } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
 import EmailList from '../components/EmailList';
 import { MailboxContext } from '../contexts/MailboxContext';
 import Container from '../components/Container';
@@ -37,16 +36,12 @@ const StructuredData: React.FC = () => {
 const HomePage: React.FC = () => {
   const { t } = useTranslation();
   const { 
-    mailbox, 
     isLoading, 
     emails, 
     selectedEmail, 
-    setSelectedEmail, 
-    isEmailsLoading
+    setSelectedEmail,
+    isEmailsLoading,
   } = useContext(MailboxContext);
-  
-  // 使用ref来跟踪是否已经处理过404错误
-  const handlingNotFoundRef = useRef(false);
   
   if (isLoading) {
     return (

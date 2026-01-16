@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import EmailList from '../components/EmailList';
@@ -13,7 +13,6 @@ const MailboxPage: React.FC = () => {
   const navigate = useNavigate();
   const { 
     emails, 
-    isEmailsLoading, 
     autoRefresh, 
     setAutoRefresh,
     // feat: 从 context 中获取全局通知函数

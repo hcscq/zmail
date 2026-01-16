@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { API_BASE_URL } from '../config';
 import { MailboxContext } from '../contexts/MailboxContext';
@@ -6,17 +6,6 @@ import { MailboxContext } from '../contexts/MailboxContext';
 interface EmailDetailProps {
   emailId: string;
   onClose: () => void;
-}
-
-interface Attachment {
-  id: string;
-  emailId: string;
-  filename: string;
-  mimeType: string;
-  size: number;
-  createdAt: number;
-  isLarge: boolean;
-  chunksCount: number;
 }
 
 const EmailDetail: React.FC<EmailDetailProps> = ({ emailId, onClose }) => {

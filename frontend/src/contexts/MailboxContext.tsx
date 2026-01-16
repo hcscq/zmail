@@ -1,22 +1,33 @@
 import React, { createContext, useState, useEffect, ReactNode, useRef } from 'react';
 import {
   createRandomMailbox,
+  createMailboxWithType,
+  generatePreviewAddress,
   getMailboxFromLocalStorage,
   saveMailboxToLocalStorage,
   removeMailboxFromLocalStorage,
   getEmails,
-  deleteMailbox as apiDeleteMailbox
+  deleteMailbox as apiDeleteMailbox,
+  AddressType
 } from '../utils/api';
 import { useTranslation } from 'react-i18next';
 import { DEFAULT_AUTO_REFRESH, AUTO_REFRESH_INTERVAL } from '../config';
+
+// localStorage key for user preferences
+const USER_PREFERENCES_KEY = 'zmail_user_preferences';
 
 // 邮件详情缓存接口
 interface EmailCache {
   [emailId: string]: {
     email: Email;
-    attachments: any[];
+    attachments: Attachment[];
     timestamp: number;
   }
+}
+
+// 用户偏好接口
+interface UserPreferences {
+  lastAddressType: AddressType;
 }
 
 interface MailboxContextType {
@@ -35,7 +46,7 @@ interface MailboxContextType {
   deleteMailbox: () => Promise<void>;
   refreshEmails: (isManual?: boolean) => Promise<void>; // feat: 添加一个参数以区分手动刷新
   emailCache: EmailCache;
-  addToEmailCache: (emailId: string, email: Email, attachments: any[]) => void;
+  addToEmailCache: (emailId: string, email: Email, attachments: Attachment[]) => void;
   clearEmailCache: () => void;
   handleMailboxNotFound: () => Promise<void>;
   errorMessage: string | null;
@@ -43,6 +54,13 @@ interface MailboxContextType {
   // feat: 添加用于显示全局通知的函数
   showSuccessMessage: (message: string) => void;
   showErrorMessage: (message: string) => void;
+  // 新增：地址类型相关
+  addressType: AddressType;
+  setAddressType: (type: AddressType) => void;
+  previewAddress: string | null;
+  generatePreview: () => Promise<void>;
+  createMailboxWithAddressType: (customAddress?: string) => Promise<void>;
+  isPreviewLoading: boolean;
 }
 
 export const MailboxContext = createContext<MailboxContextType>({
@@ -69,6 +87,13 @@ export const MailboxContext = createContext<MailboxContextType>({
   // feat: 提供默认空函数
   showSuccessMessage: () => {},
   showErrorMessage: () => {},
+  // 新增：地址类型相关默认值
+  addressType: 'random',
+  setAddressType: () => {},
+  previewAddress: null,
+  generatePreview: async () => {},
+  createMailboxWithAddressType: async () => {},
+  isPreviewLoading: false,
 });
 
 interface MailboxProviderProps {
@@ -88,6 +113,103 @@ export const MailboxProvider: React.FC<MailboxProviderProps> = ({ children }) =>
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const errorTimeoutRef = useRef<number | null>(null);
   const successTimeoutRef = useRef<number | null>(null);
+  
+  // 新增：地址类型相关状态
+  const [addressType, setAddressTypeState] = useState<AddressType>('random');
+  const [previewAddress, setPreviewAddress] = useState<string | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+
+  // 从 localStorage 加载用户偏好
+  useEffect(() => {
+    try {
+      const savedPreferences = localStorage.getItem(USER_PREFERENCES_KEY);
+      if (savedPreferences) {
+        const preferences: UserPreferences = JSON.parse(savedPreferences);
+        if (preferences.lastAddressType) {
+          setAddressTypeState(preferences.lastAddressType);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading user preferences:', error);
+    }
+  }, []);
+
+  // 设置地址类型并保存到 localStorage
+  const setAddressType = (type: AddressType) => {
+    setAddressTypeState(type);
+    // 保存用户偏好到 localStorage
+    try {
+      const preferences: UserPreferences = { lastAddressType: type };
+      localStorage.setItem(USER_PREFERENCES_KEY, JSON.stringify(preferences));
+    } catch (error) {
+      console.error('Error saving user preferences:', error);
+    }
+    // 切换类型时清除预览地址
+    setPreviewAddress(null);
+  };
+
+  // 生成预览地址
+  const generatePreview = async () => {
+    if (addressType === 'custom') {
+      setPreviewAddress(null);
+      return;
+    }
+    
+    setIsPreviewLoading(true);
+    try {
+      const result = await generatePreviewAddress(addressType);
+      if (result.success && result.address) {
+        setPreviewAddress(result.address);
+      }
+    } catch (error) {
+      console.error('Error generating preview address:', error);
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
+
+  // 使用指定地址类型创建邮箱
+  const createMailboxWithAddressType = async (customAddress?: string) => {
+    try {
+      setErrorMessage(null);
+      setSuccessMessage(null);
+      setIsLoading(true);
+      
+      // 对于自定义类型，使用用户输入的地址
+      // 对于其他类型，使用预览地址或让后端生成
+      let result;
+      
+      if (addressType === 'custom') {
+        if (!customAddress || !customAddress.trim()) {
+          showErrorMessage(t('mailbox.customAddressRequired'));
+          setIsLoading(false);
+          return;
+        }
+        result = await createMailboxWithType('custom', customAddress);
+      } else {
+        // 对于 name 和 random 类型，直接调用后端生成
+        result = await createMailboxWithType(addressType);
+      }
+      
+      if (result.success && result.mailbox) {
+        setMailbox(result.mailbox);
+        saveMailboxToLocalStorage(result.mailbox);
+        setEmails([]);
+        setSelectedEmail(null);
+        clearEmailCache();
+        setPreviewAddress(null);
+        showSuccessMessage(t('mailbox.createSuccess'));
+      } else {
+        const errorMsg = typeof result.error === 'string' ? result.error : t('mailbox.createFailed');
+        showErrorMessage(errorMsg);
+      }
+    } catch (error) {
+      console.error('createMailboxWithAddressType: Error:', error);
+      showErrorMessage(t('mailbox.createFailed'));
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // feat: 创建显示成功消息的函数
   const showSuccessMessage = (message: string) => {
@@ -273,7 +395,7 @@ export const MailboxProvider: React.FC<MailboxProviderProps> = ({ children }) =>
   };
 
   // 添加邮件到缓存
-  const addToEmailCache = (emailId: string, email: Email, attachments: any[]) => {
+  const addToEmailCache = (emailId: string, email: Email, attachments: Attachment[]) => {
     setEmailCache(prev => ({
       ...prev,
       [emailId]: {
@@ -368,6 +490,13 @@ export const MailboxProvider: React.FC<MailboxProviderProps> = ({ children }) =>
         // feat: 将函数添加到 context value 中
         showSuccessMessage,
         showErrorMessage,
+        // 新增：地址类型相关
+        addressType,
+        setAddressType,
+        previewAddress,
+        generatePreview,
+        createMailboxWithAddressType,
+        isPreviewLoading,
       }}
     >
       {/* [feat] 全局通知组件 */}

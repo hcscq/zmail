@@ -227,7 +227,7 @@ export async function cleanupReadMails(db: D1Database): Promise<number> {
  * @param db 数据库实例
  * @param emailId 邮件ID
  */
-async function cleanupAttachments(db: D1Database, emailId: string): Promise<void> {
+export async function cleanupAttachments(db: D1Database, emailId: string): Promise<void> {
   // [refactor] 利用 ON DELETE CASCADE，此函数在删除邮件时不再需要手动调用。
   // 但保留此函数以备其他需要单独清理附件的场景。
   try {

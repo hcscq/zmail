@@ -30,6 +30,7 @@
   "mailbox": {
     "createRandom": "Create Random Mailbox",
     "createCustom": "Create Custom Mailbox",
+    "createNew": "Create New Mailbox",
     "address": "Email Address",
     "customAddress": "Custom Address",
     "customAddressPlaceholder": "Enter custom address",
@@ -64,7 +65,8 @@
     "confirmClearAllMailboxes": "Are you sure you want to clear all saved mailboxes? (The current mailbox will not be deleted)",
     "clearAll": "Clear All",
     "clearAllSuccess": "All saved mailboxes have been cleared",
-    "clearAllFailed": "Failed to clear some mailboxes ({{count}})"
+    "clearAllFailed": "Failed to clear some mailboxes ({{count}})",
+    "customAddressRequired": "Please enter a custom address"
   },
   "email": {
     "inbox": "Inbox",
@@ -100,6 +102,24 @@
   "settings": {
     "language": "Language",
     "toggleTheme": "Toggle Theme"
+  },
+  "addressType": {
+    "label": "Address Type",
+    "name": "English Name",
+    "random": "Random",
+    "custom": "Custom"
+  },
+  "addressPreview": {
+    "regenerate": "Regenerate Address",
+    "preview": "Preview"
+  },
+  "customAddress": {
+    "placeholder": "Enter custom address",
+    "required": "Address is required",
+    "tooShort": "Address must be at least 3 characters",
+    "tooLong": "Address cannot exceed 30 characters",
+    "invalidChars": "Only letters, numbers, dots, underscores, and hyphens allowed",
+    "hint": "3-30 characters, letters, numbers, dots, underscores, hyphens"
   },
   "errors": {
     "generic": "An error occurred, please try again later",
