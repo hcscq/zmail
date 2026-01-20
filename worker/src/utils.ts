@@ -124,3 +124,42 @@ export function validateCustomAddress(address: string): AddressValidationResult 
   
   return { valid: true };
 }
+
+/**
+ * Sentinel value for permanent mailboxes
+ * This far-future timestamp (September 9, 2286) indicates a mailbox never expires
+ */
+export const PERMANENT_MAILBOX_SENTINEL = 9999999999;
+
+/**
+ * Check if a mailbox is permanent based on expires_at value
+ * @param expiresAt The expiry timestamp to check
+ * @returns True if the mailbox is permanent, false otherwise
+ */
+export function isPermanentMailbox(expiresAt: number): boolean {
+  return expiresAt === PERMANENT_MAILBOX_SENTINEL;
+}
+
+/**
+ * Check if an address type is eligible for permanence
+ * Only 'name' and 'custom' address types can be permanent
+ * @param addressType The address type to check
+ * @returns True if the address type can be permanent, false otherwise
+ */
+export function isPermanentAllowedForAddressType(addressType: string): boolean {
+  return addressType === 'name' || addressType === 'custom';
+}
+
+/**
+ * Calculate expiry timestamp for mailbox creation
+ * Returns sentinel value if permanent, otherwise calculates normal expiry
+ * @param hours Number of hours until expiry (ignored if isPermanent is true)
+ * @param isPermanent Whether the mailbox should be permanent
+ * @returns Expiry timestamp (sentinel value for permanent, calculated timestamp for temporary)
+ */
+export function calculateMailboxExpiry(hours: number, isPermanent: boolean): number {
+  if (isPermanent) {
+    return PERMANENT_MAILBOX_SENTINEL;
+  }
+  return getCurrentTimestamp() + (hours * 60 * 60);
+}

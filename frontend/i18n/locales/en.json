@@ -66,7 +66,11 @@
     "clearAll": "Clear All",
     "clearAllSuccess": "All saved mailboxes have been cleared",
     "clearAllFailed": "Failed to clear some mailboxes ({{count}})",
-    "customAddressRequired": "Please enter a custom address"
+    "customAddressRequired": "Please enter a custom address",
+    "convertSuccess": "Mailbox converted to permanent successfully",
+    "convertFailed": "Failed to convert mailbox to permanent",
+    "status": "Status",
+    "expiry": "Expiry"
   },
   "email": {
     "inbox": "Inbox",
@@ -108,6 +112,15 @@
     "name": "English Name",
     "random": "Random",
     "custom": "Custom"
+  },
+  "permanent": {
+    "option": "Make Permanent",
+    "description": "Permanent mailboxes never expire and cannot be deleted",
+    "randomIneligible": "Random mailboxes cannot be made permanent. Choose Name or Custom type for permanent mailboxes.",
+    "makePermanent": "Make Permanent",
+    "permanent": "Permanent",
+    "neverExpires": "Never expires",
+    "cannotDelete": "Permanent mailboxes cannot be deleted"
   },
   "addressPreview": {
     "regenerate": "Regenerate Address",

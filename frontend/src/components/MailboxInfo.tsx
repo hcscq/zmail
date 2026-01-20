@@ -6,13 +6,15 @@ interface MailboxInfoProps {
   onDelete: () => void;
   autoRefresh: boolean;
   onToggleAutoRefresh: () => void;
+  onConvertToPermanent?: () => void;
 }
 
 const MailboxInfo: React.FC<MailboxInfoProps> = ({ 
   mailbox, 
   onDelete,
   autoRefresh,
-  onToggleAutoRefresh
+  onToggleAutoRefresh,
+  onConvertToPermanent
 }) => {
   const { t } = useTranslation();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -45,6 +47,9 @@ const MailboxInfo: React.FC<MailboxInfoProps> = ({
       return t('mailbox.expiresInMinutes', { minutes });
     }
   };
+
+  const isPermanent = mailbox.isPermanent || false;
+  const isEligibleForConversion = !isPermanent && (mailbox.addressType === 'name' || mailbox.addressType === 'custom');
   
 
   
@@ -63,28 +68,50 @@ const MailboxInfo: React.FC<MailboxInfoProps> = ({
             {autoRefresh ? t('email.autoRefreshOn') : t('email.autoRefreshOff')}
           </button>
           
-          {showDeleteConfirm ? (
-            <>
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                className="px-3 py-1 rounded-md bg-muted"
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                onClick={onDelete}
-                className="px-3 py-1 rounded-md bg-destructive text-destructive-foreground"
-              >
-                {t('common.confirm')}
-              </button>
-            </>
-          ) : (
+          {/* Show conversion button for eligible temporary mailboxes */}
+          {isEligibleForConversion && onConvertToPermanent && (
             <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="px-3 py-1 rounded-md bg-destructive text-destructive-foreground"
+              onClick={onConvertToPermanent}
+              className="px-3 py-1 rounded-md bg-blue-600 text-white hover:bg-blue-700"
             >
-              {t('common.delete')}
+              {t('permanent.makePermanent')}
             </button>
+          )}
+          
+          {/* Show delete button only for temporary mailboxes */}
+          {!isPermanent && (
+            <>
+              {showDeleteConfirm ? (
+                <>
+                  <button
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="px-3 py-1 rounded-md bg-muted"
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    onClick={onDelete}
+                    className="px-3 py-1 rounded-md bg-destructive text-destructive-foreground"
+                  >
+                    {t('common.confirm')}
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="px-3 py-1 rounded-md bg-destructive text-destructive-foreground"
+                >
+                  {t('common.delete')}
+                </button>
+              )}
+            </>
+          )}
+          
+          {/* Show explanatory text for permanent mailboxes */}
+          {isPermanent && (
+            <span className="px-3 py-1 text-sm text-muted-foreground">
+              {t('permanent.cannotDelete')}
+            </span>
           )}
         </div>
       </div>
@@ -94,14 +121,33 @@ const MailboxInfo: React.FC<MailboxInfoProps> = ({
           <p className="text-muted-foreground">{t('mailbox.created')}</p>
           <p>{formatDate(mailbox.createdAt)}</p>
         </div>
-        <div>
-          <p className="text-muted-foreground">{t('mailbox.expiresAt')}</p>
-          <p>{formatDate(mailbox.expiresAt)}</p>
-        </div>
-        <div>
-          <p className="text-muted-foreground">{t('mailbox.timeLeft')}</p>
-          <p>{calculateTimeLeft(mailbox.expiresAt)}</p>
-        </div>
+        
+        {/* Show permanent badge or expiration info */}
+        {isPermanent ? (
+          <>
+            <div>
+              <p className="text-muted-foreground">{t('mailbox.status')}</p>
+              <p className="inline-flex items-center px-2 py-1 rounded-md bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 font-medium">
+                {t('permanent.permanent')}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">{t('mailbox.expiry')}</p>
+              <p>{t('permanent.neverExpires')}</p>
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <p className="text-muted-foreground">{t('mailbox.expiresAt')}</p>
+              <p>{formatDate(mailbox.expiresAt)}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">{t('mailbox.timeLeft')}</p>
+              <p>{calculateTimeLeft(mailbox.expiresAt)}</p>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

@@ -8,6 +8,7 @@ import {
   removeMailboxFromLocalStorage,
   getEmails,
   deleteMailbox as apiDeleteMailbox,
+  convertMailboxToPermanent,
   AddressType
 } from '../utils/api';
 import { useTranslation } from 'react-i18next';
@@ -61,6 +62,10 @@ interface MailboxContextType {
   generatePreview: () => Promise<void>;
   createMailboxWithAddressType: (customAddress?: string) => Promise<void>;
   isPreviewLoading: boolean;
+  // 新增：永久邮箱相关
+  convertToPermanent: () => Promise<void>;
+  isPermanentOption: boolean;
+  setIsPermanentOption: (value: boolean) => void;
 }
 
 export const MailboxContext = createContext<MailboxContextType>({
@@ -94,6 +99,10 @@ export const MailboxContext = createContext<MailboxContextType>({
   generatePreview: async () => {},
   createMailboxWithAddressType: async () => {},
   isPreviewLoading: false,
+  // 新增：永久邮箱相关默认值
+  convertToPermanent: async () => {},
+  isPermanentOption: false,
+  setIsPermanentOption: () => {},
 });
 
 interface MailboxProviderProps {
@@ -118,6 +127,9 @@ export const MailboxProvider: React.FC<MailboxProviderProps> = ({ children }) =>
   const [addressType, setAddressTypeState] = useState<AddressType>('random');
   const [previewAddress, setPreviewAddress] = useState<string | null>(null);
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  
+  // 新增：永久邮箱选项状态
+  const [isPermanentOption, setIsPermanentOption] = useState(false);
 
   // 从 localStorage 加载用户偏好
   useEffect(() => {
@@ -146,6 +158,10 @@ export const MailboxProvider: React.FC<MailboxProviderProps> = ({ children }) =>
     }
     // 切换类型时清除预览地址
     setPreviewAddress(null);
+    // 切换到 random 时重置永久选项
+    if (type === 'random') {
+      setIsPermanentOption(false);
+    }
   };
 
   // 生成预览地址
@@ -179,16 +195,20 @@ export const MailboxProvider: React.FC<MailboxProviderProps> = ({ children }) =>
       // 对于其他类型，使用预览地址或让后端生成
       let result;
       
+      // 确定是否应该创建永久邮箱（仅对 name/custom 类型有效）
+      const isEligible = addressType === 'name' || addressType === 'custom';
+      const isPermanent = isEligible && isPermanentOption;
+      
       if (addressType === 'custom') {
         if (!customAddress || !customAddress.trim()) {
           showErrorMessage(t('mailbox.customAddressRequired'));
           setIsLoading(false);
           return;
         }
-        result = await createMailboxWithType('custom', customAddress);
+        result = await createMailboxWithType('custom', customAddress, 24, isPermanent);
       } else {
         // 对于 name 和 random 类型，直接调用后端生成
-        result = await createMailboxWithType(addressType);
+        result = await createMailboxWithType(addressType, undefined, 24, isPermanent);
       }
       
       if (result.success && result.mailbox) {
@@ -464,6 +484,30 @@ export const MailboxProvider: React.FC<MailboxProviderProps> = ({ children }) =>
     saveMailboxToLocalStorage(newMailbox);
   };
 
+  // 新增：将当前邮箱转换为永久邮箱
+  const convertToPermanent = async () => {
+    if (!mailbox) return;
+    
+    try {
+      setErrorMessage(null);
+      setSuccessMessage(null);
+      
+      const result = await convertMailboxToPermanent(mailbox.address);
+      
+      if (result.success && result.mailbox) {
+        setMailbox(result.mailbox);
+        saveMailboxToLocalStorage(result.mailbox);
+        showSuccessMessage(t('mailbox.convertSuccess'));
+      } else {
+        const errorMsg = typeof result.error === 'string' ? result.error : t('mailbox.convertFailed');
+        showErrorMessage(errorMsg);
+      }
+    } catch (error) {
+      console.error('Error converting mailbox:', error);
+      showErrorMessage(t('mailbox.convertFailed'));
+    }
+  };
+
   return (
     <MailboxContext.Provider
       value={{
@@ -497,6 +541,10 @@ export const MailboxProvider: React.FC<MailboxProviderProps> = ({ children }) =>
         generatePreview,
         createMailboxWithAddressType,
         isPreviewLoading,
+        // 新增：永久邮箱相关
+        convertToPermanent,
+        isPermanentOption,
+        setIsPermanentOption,
       }}
     >
       {/* [feat] 全局通知组件 */}

@@ -15,6 +15,7 @@ const MailboxPage: React.FC = () => {
     emails, 
     autoRefresh, 
     setAutoRefresh,
+    convertToPermanent,
     // feat: 从 context 中获取全局通知函数
     showSuccessMessage,
     showErrorMessage
@@ -105,6 +106,7 @@ const MailboxPage: React.FC = () => {
           onDelete={handleDeleteMailbox}
           autoRefresh={autoRefresh}
           onToggleAutoRefresh={() => setAutoRefresh(!autoRefresh)}
+          onConvertToPermanent={convertToPermanent}
         />
       )}
       

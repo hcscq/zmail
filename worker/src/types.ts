@@ -6,21 +6,28 @@ export interface Env {
   VITE_EMAIL_DOMAIN?: string;
 }
 
+// 地址类型
+export type AddressType = 'name' | 'random' | 'custom';
+
 // 邮箱类型
 export interface Mailbox {
   id: string;
   address: string;
+  addressType: AddressType;
   createdAt: number;
   expiresAt: number;
   ipAddress: string;
   lastAccessed: number;
+  isPermanent?: boolean;
 }
 
 // 创建邮箱参数
 export interface CreateMailboxParams {
   address: string;
+  addressType: AddressType;
   expiresInHours: number;
   ipAddress: string;
+  isPermanent?: boolean;
 }
 
 // 邮件类型

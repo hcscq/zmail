@@ -8,10 +8,12 @@ declare module '*.json' {
 interface Mailbox {
   id: string;
   address: string;
+  addressType?: 'name' | 'random' | 'custom';
   createdAt: number;
   expiresAt: number;
   lastAccessed: number;
   ipAddress?: string;
+  isPermanent?: boolean;
 }
 
 interface Email {

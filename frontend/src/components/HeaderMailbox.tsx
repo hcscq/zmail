@@ -31,7 +31,9 @@ const HeaderMailbox: React.FC<HeaderMailboxProps> = ({
     previewAddress,
     generatePreview,
     createMailboxWithAddressType,
-    isPreviewLoading
+    isPreviewLoading,
+    isPermanentOption,
+    setIsPermanentOption
   } = useContext(MailboxContext);
   const [isCreateMode, setIsCreateMode] = useState(false);
   const [customAddress, setCustomAddress] = useState('');
@@ -56,6 +58,10 @@ const HeaderMailbox: React.FC<HeaderMailboxProps> = ({
     setAddressType(type);
     setCustomAddress('');
     setCustomAddressError(null);
+    // Reset permanent option when switching to random
+    if (type === 'random') {
+      setIsPermanentOption(false);
+    }
     if (type !== 'custom') {
       generatePreview();
     }
@@ -160,6 +166,8 @@ const HeaderMailbox: React.FC<HeaderMailboxProps> = ({
         selectedType={addressType}
         onTypeChange={handleAddressTypeChange}
         disabled={isActionLoading}
+        isPermanent={isPermanentOption}
+        onPermanentChange={setIsPermanentOption}
       />
       
       {/* 地址预览或自定义输入 */}

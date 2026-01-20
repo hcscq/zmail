@@ -10,13 +10,15 @@ export type AddressType = 'name' | 'random' | 'custom';
 export const createMailboxWithType = async (
   addressType: AddressType = 'random',
   customAddress?: string,
-  expiresInHours = 24
+  expiresInHours = 24,
+  isPermanent = false
 ) => {
   try {
     const requestBody: {
       addressType: AddressType;
       expiresInHours: number;
       address?: string;
+      isPermanent?: boolean;
     } = {
       addressType,
       expiresInHours,
@@ -25,6 +27,11 @@ export const createMailboxWithType = async (
     // 自定义地址类型需要提供 address 参数
     if (addressType === 'custom' && customAddress) {
       requestBody.address = customAddress.trim();
+    }
+    
+    // 只在 isPermanent 为 true 时包含在请求体中
+    if (isPermanent) {
+      requestBody.isPermanent = true;
     }
     
     const response = await fetch(apiUrl('/api/mailboxes'), {
@@ -269,6 +276,29 @@ export const deleteMailbox = async (address: string) => {
   }
 };
 
+// 将邮箱转换为永久邮箱
+export const convertMailboxToPermanent = async (address: string) => {
+  try {
+    const response = await fetch(apiUrl(`/api/mailboxes/${address}/convert-to-permanent`), {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    const data = await response.json();
+    
+    if (!response.ok) {
+      return { success: false, error: data.error || 'Failed to convert mailbox' };
+    }
+    
+    return { success: true, mailbox: data.mailbox, message: data.message };
+  } catch (error) {
+    console.error('Error converting mailbox:', error);
+    return { success: false, error };
+  }
+};
+
 // 保存邮箱信息到本地存储
 export const saveMailboxToLocalStorage = (mailbox: Mailbox) => {
   localStorage.setItem('tempMailbox', JSON.stringify({
@@ -285,6 +315,11 @@ export const getMailboxFromLocalStorage = (): Mailbox | null => {
   try {
     const mailbox = JSON.parse(savedMailbox) as Mailbox & { savedAt: number };
     const now = Date.now() / 1000;
+    
+    // 永久邮箱不会过期
+    if (mailbox.isPermanent) {
+      return mailbox;
+    }
     
     // 检查邮箱是否过期
     if (mailbox.expiresAt < now) {

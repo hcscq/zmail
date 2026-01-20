@@ -66,7 +66,11 @@
     "clearAll": "全部清除",
     "clearAllSuccess": "已清空所有保存的邮箱",
     "clearAllFailed": "部分邮箱清空失败 ({{count}}个)",
-    "customAddressRequired": "请输入自定义地址"
+    "customAddressRequired": "请输入自定义地址",
+    "convertSuccess": "邮箱已成功转换为永久邮箱",
+    "convertFailed": "转换为永久邮箱失败",
+    "status": "状态",
+    "expiry": "过期时间"
   },
   "email": {
     "inbox": "收件箱",
@@ -108,6 +112,15 @@
     "name": "英文名",
     "random": "随机",
     "custom": "自定义"
+  },
+  "permanent": {
+    "option": "设为永久",
+    "description": "永久邮箱永不过期且无法删除",
+    "randomIneligible": "随机邮箱无法设为永久。请选择英文名或自定义类型以创建永久邮箱。",
+    "makePermanent": "设为永久",
+    "permanent": "永久",
+    "neverExpires": "永不过期",
+    "cannotDelete": "永久邮箱无法删除"
   },
   "addressPreview": {
     "regenerate": "重新生成地址",

@@ -7,12 +7,16 @@ import {
   EmailListItem,
   Attachment,
   AttachmentListItem,
-  SaveAttachmentParams
+  SaveAttachmentParams,
+  AddressType
 } from './types';
 import { 
   generateId, 
-  getCurrentTimestamp, 
-  calculateExpiryTimestamp 
+  getCurrentTimestamp,
+  PERMANENT_MAILBOX_SENTINEL,
+  isPermanentMailbox,
+  isPermanentAllowedForAddressType,
+  calculateMailboxExpiry
 } from './utils';
 
 // 附件分块大小（字节）
@@ -25,7 +29,10 @@ const CHUNK_SIZE = 500000; // 约500KB
 export async function initializeDatabase(db: D1Database): Promise<void> {
   try {
     // 创建邮箱表
-    await db.exec(`CREATE TABLE IF NOT EXISTS mailboxes (id TEXT PRIMARY KEY, address TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, ip_address TEXT, last_accessed INTEGER NOT NULL);`);
+    await db.exec(`CREATE TABLE IF NOT EXISTS mailboxes (id TEXT PRIMARY KEY, address TEXT UNIQUE NOT NULL, address_type TEXT NOT NULL DEFAULT 'random', created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, ip_address TEXT, last_accessed INTEGER NOT NULL);`);
+    
+    // Backfill existing rows with default address_type 'random' for compatibility
+    await db.exec(`UPDATE mailboxes SET address_type = 'random' WHERE address_type IS NULL OR address_type = '';`);
     
     // 创建邮件表
     await db.exec(`CREATE TABLE IF NOT EXISTS emails (id TEXT PRIMARY KEY, mailbox_id TEXT NOT NULL, from_address TEXT NOT NULL, from_name TEXT, to_address TEXT NOT NULL, subject TEXT, text_content TEXT, html_content TEXT, received_at INTEGER NOT NULL, has_attachments BOOLEAN DEFAULT FALSE, is_read BOOLEAN DEFAULT FALSE, FOREIGN KEY (mailbox_id) REFERENCES mailboxes(id) ON DELETE CASCADE);`);
@@ -61,16 +68,21 @@ export async function initializeDatabase(db: D1Database): Promise<void> {
  */
 export async function createMailbox(db: D1Database, params: CreateMailboxParams): Promise<Mailbox> {
   const now = getCurrentTimestamp();
+  const isPermanent = !!params.isPermanent && isPermanentAllowedForAddressType(params.addressType);
+  const expiresAt = calculateMailboxExpiry(params.expiresInHours, isPermanent);
+  
   const mailbox: Mailbox = {
     id: generateId(),
     address: params.address,
+    addressType: params.addressType,
     createdAt: now,
-    expiresAt: calculateExpiryTimestamp(params.expiresInHours),
+    expiresAt: expiresAt,
     ipAddress: params.ipAddress,
     lastAccessed: now,
+    isPermanent: isPermanentMailbox(expiresAt)
   };
   
-  await db.prepare(`INSERT INTO mailboxes (id, address, created_at, expires_at, ip_address, last_accessed) VALUES (?, ?, ?, ?, ?, ?)`).bind(mailbox.id, mailbox.address, mailbox.createdAt, mailbox.expiresAt, mailbox.ipAddress, mailbox.lastAccessed).run();
+  await db.prepare(`INSERT INTO mailboxes (id, address, address_type, created_at, expires_at, ip_address, last_accessed) VALUES (?, ?, ?, ?, ?, ?, ?)`).bind(mailbox.id, mailbox.address, mailbox.addressType, mailbox.createdAt, mailbox.expiresAt, mailbox.ipAddress, mailbox.lastAccessed).run();
   
   return mailbox;
 }
@@ -83,21 +95,41 @@ export async function createMailbox(db: D1Database, params: CreateMailboxParams)
  */
 export async function getMailbox(db: D1Database, address: string): Promise<Mailbox | null> {
   const now = getCurrentTimestamp();
-  const result = await db.prepare(`SELECT id, address, created_at, expires_at, ip_address, last_accessed FROM mailboxes WHERE address = ? AND expires_at > ?`).bind(address, now).first();
+  const result = await db.prepare(`SELECT id, address, address_type, created_at, expires_at, ip_address, last_accessed FROM mailboxes WHERE address = ? AND (expires_at > ? OR expires_at = ?)`).bind(address, now, PERMANENT_MAILBOX_SENTINEL).first();
   
   if (!result) return null;
   
   // 更新最后访问时间
   await db.prepare(`UPDATE mailboxes SET last_accessed = ? WHERE id = ?`).bind(now, result.id).run();
   
+  const expiresAt = result.expires_at as number;
+  
   return {
     id: result.id as string,
     address: result.address as string,
+    addressType: result.address_type as AddressType,
     createdAt: result.created_at as number,
-    expiresAt: result.expires_at as number,
+    expiresAt: expiresAt,
     ipAddress: result.ip_address as string,
     lastAccessed: now,
+    isPermanent: isPermanentMailbox(expiresAt)
   };
+}
+
+/**
+ * 将临时邮箱转换为永久邮箱
+ * @param db 数据库实例
+ * @param address 邮箱地址
+ * @returns 是否成功更新（用于幂等性检查）
+ */
+export async function convertMailboxToPermanent(db: D1Database, address: string): Promise<boolean> {
+  const result = await db.prepare(
+    `UPDATE mailboxes 
+     SET expires_at = ? 
+     WHERE address = ? AND address_type IN ('name', 'custom') AND expires_at != ?`
+  ).bind(PERMANENT_MAILBOX_SENTINEL, address, PERMANENT_MAILBOX_SENTINEL).run();
+  
+  return (result.meta?.changes || 0) > 0;
 }
 
 /**
@@ -108,28 +140,47 @@ export async function getMailbox(db: D1Database, address: string): Promise<Mailb
  */
 export async function getMailboxes(db: D1Database, ipAddress: string): Promise<Mailbox[]> {
   const now = getCurrentTimestamp();
-  const results = await db.prepare(`SELECT id, address, created_at, expires_at, ip_address, last_accessed FROM mailboxes WHERE ip_address = ? AND expires_at > ? ORDER BY created_at DESC`).bind(ipAddress, now).all();
+  const results = await db.prepare(`SELECT id, address, address_type, created_at, expires_at, ip_address, last_accessed FROM mailboxes WHERE ip_address = ? AND (expires_at > ? OR expires_at = ?) ORDER BY created_at DESC`).bind(ipAddress, now, PERMANENT_MAILBOX_SENTINEL).all();
   
   if (!results.results) return [];
   
-  return results.results.map(result => ({
-    id: result.id as string,
-    address: result.address as string,
-    createdAt: result.created_at as number,
-    expiresAt: result.expires_at as number,
-    ipAddress: result.ip_address as string,
-    lastAccessed: result.last_accessed as number,
-  }));
+  return results.results.map(result => {
+    const expiresAt = result.expires_at as number;
+    return {
+      id: result.id as string,
+      address: result.address as string,
+      addressType: result.address_type as AddressType,
+      createdAt: result.created_at as number,
+      expiresAt: expiresAt,
+      ipAddress: result.ip_address as string,
+      lastAccessed: result.last_accessed as number,
+      isPermanent: isPermanentMailbox(expiresAt)
+    };
+  });
 }
 
 /**
  * 删除邮箱
  * @param db 数据库实例
  * @param address 邮箱地址
+ * @returns 删除结果
  */
-export async function deleteMailbox(db: D1Database, address: string): Promise<void> {
+export async function deleteMailbox(db: D1Database, address: string): Promise<{ success: boolean; error?: string }> {
+  // 检查邮箱是否为永久邮箱
+  const mailbox = await getMailbox(db, address);
+  
+  if (!mailbox) {
+    return { success: false, error: 'Mailbox not found' };
+  }
+  
+  if (mailbox.isPermanent) {
+    return { success: false, error: 'Cannot delete permanent mailbox' };
+  }
+  
   // [feat] 由于外键设置了 ON DELETE CASCADE，直接删除邮箱即可级联删除相关邮件和附件
   await db.prepare(`DELETE FROM mailboxes WHERE address = ?`).bind(address).run();
+  
+  return { success: true };
 }
 
 /**
@@ -183,7 +234,8 @@ export async function cleanupExpiredMailboxes(db: D1Database): Promise<number> {
   // [refactor] 由于数据库 schema 中设置了 ON DELETE CASCADE，
   // 删除 mailboxes 表中的记录会自动删除 emails, attachments, 和 attachment_chunks 中所有相关的记录。
   // 这大大简化了清理逻辑，并提高了性能。
-  const result = await db.prepare(`DELETE FROM mailboxes WHERE expires_at <= ?`).bind(now).run();
+  // 排除永久邮箱（expires_at != PERMANENT_MAILBOX_SENTINEL）
+  const result = await db.prepare(`DELETE FROM mailboxes WHERE expires_at <= ? AND expires_at != ?`).bind(now, PERMANENT_MAILBOX_SENTINEL).run();
   
   // 清理可能由于异常情况产生的孤立附件
   await cleanupOrphanedAttachments(db);
@@ -201,7 +253,14 @@ export async function cleanupExpiredMails(db: D1Database): Promise<number> {
   const oneDayAgo = now - 24 * 60 * 60; // 24小时前的时间戳（秒）
   
   // [refactor] 同样利用 ON DELETE CASCADE 特性简化逻辑
-  const result = await db.prepare(`DELETE FROM emails WHERE received_at <= ?`).bind(oneDayAgo).run();
+  // 排除永久邮箱的邮件
+  const result = await db.prepare(
+    `DELETE FROM emails
+     WHERE received_at <= ?
+       AND mailbox_id IN (
+         SELECT id FROM mailboxes WHERE expires_at != ?
+       )`
+  ).bind(oneDayAgo, PERMANENT_MAILBOX_SENTINEL).run();
   
   await cleanupOrphanedAttachments(db);
   
@@ -215,7 +274,14 @@ export async function cleanupExpiredMails(db: D1Database): Promise<number> {
  */
 export async function cleanupReadMails(db: D1Database): Promise<number> {
   // [refactor] 同样利用 ON DELETE CASCADE 特性简化逻辑
-  const result = await db.prepare(`DELETE FROM emails WHERE is_read = 1`).run();
+  // 排除永久邮箱的邮件
+  const result = await db.prepare(
+    `DELETE FROM emails
+     WHERE is_read = 1
+       AND mailbox_id IN (
+         SELECT id FROM mailboxes WHERE expires_at != ?
+       )`
+  ).bind(PERMANENT_MAILBOX_SENTINEL).run();
   
   await cleanupOrphanedAttachments(db);
   

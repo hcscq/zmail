@@ -9,7 +9,8 @@ import {
   getEmail, 
   deleteEmail,
   getAttachments,
-  getAttachment
+  getAttachment,
+  convertMailboxToPermanent
 } from './database';
 import { generateRandomAddress, validateCustomAddress } from './utils';
 import { generateNameAddress } from './name-generator';
@@ -23,7 +24,7 @@ const app = new Hono<{ Bindings: Env }>();
 // 添加 CORS 中间件
 app.use('/*', cors({
   origin: '*',
-  allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type'],
   maxAge: 86400,
 }));
@@ -69,7 +70,18 @@ app.post('/api/mailboxes', async (c) => {
       return c.json({ success: false, error: '无效的地址类型' }, 400);
     }
     
-    const expiresInHours = 24; // 固定24小时有效期
+    // 获取 isPermanent 参数，默认为 false
+    const isPermanent: boolean = typeof body.isPermanent === 'boolean' ? body.isPermanent : false;
+    
+    // 验证 isPermanent 只能用于 name 或 custom 类型
+    if (isPermanent && addressType === 'random') {
+      return c.json({ 
+        success: false, 
+        error: 'Random mailboxes cannot be permanent' 
+      }, 400);
+    }
+    
+    const expiresInHours = 24; // 固定24小时有效期（永久邮箱会被忽略）
     
     // 获取客户端IP
     const ip = c.req.header('CF-Connecting-IP') || 'unknown';
@@ -123,11 +135,13 @@ app.post('/api/mailboxes', async (c) => {
     // 创建邮箱
     const mailbox = await createMailbox(c.env.DB, {
       address,
+      addressType,
       expiresInHours,
       ipAddress: ip,
+      isPermanent
     });
     
-    // 返回结果，包含 addressType 字段
+    // 返回结果，包含 addressType 和 isPermanent 字段
     return c.json({ 
       success: true, 
       mailbox: {
@@ -166,11 +180,80 @@ app.get('/api/mailboxes/:address', async (c) => {
   }
 });
 
+// 将临时邮箱转换为永久邮箱
+app.patch('/api/mailboxes/:address/convert-to-permanent', async (c) => {
+  try {
+    const address = c.req.param('address');
+    
+    // 检查邮箱是否存在
+    const mailbox = await getMailbox(c.env.DB, address);
+    if (!mailbox) {
+      return c.json({ success: false, error: 'Mailbox not found' }, 404);
+    }
+    
+    // 拒绝随机邮箱的转换
+    if (mailbox.addressType === 'random') {
+      return c.json({ 
+        success: false, 
+        error: 'Random mailboxes cannot be converted to permanent' 
+      }, 403);
+    }
+    
+    // 检查是否已经是永久邮箱
+    if (mailbox.isPermanent) {
+      return c.json({ 
+        success: true, 
+        message: 'Mailbox is already permanent',
+        mailbox 
+      });
+    }
+    
+    // 转换为永久邮箱
+    const converted = await convertMailboxToPermanent(c.env.DB, address);
+    
+    if (!converted) {
+      return c.json({ 
+        success: false, 
+        error: 'Failed to convert mailbox' 
+      }, 500);
+    }
+    
+    // 获取更新后的邮箱
+    const updatedMailbox = await getMailbox(c.env.DB, address);
+    
+    return c.json({ 
+      success: true, 
+      message: 'Mailbox converted to permanent',
+      mailbox: updatedMailbox 
+    });
+  } catch (error) {
+    console.error('Convert mailbox failed:', error);
+    return c.json({ 
+      success: false, 
+      error: 'Failed to convert mailbox',
+      message: error instanceof Error ? error.message : String(error)
+    }, 500);
+  }
+});
+
 // 删除邮箱
 app.delete('/api/mailboxes/:address', async (c) => {
   try {
     const address = c.req.param('address');
-    await deleteMailbox(c.env.DB, address);
+    const result = await deleteMailbox(c.env.DB, address);
+    
+    if (!result.success) {
+      if (result.error === 'Cannot delete permanent mailbox') {
+        return c.json({ 
+          success: false, 
+          error: result.error 
+        }, 403);
+      }
+      return c.json({ 
+        success: false, 
+        error: result.error 
+      }, 404);
+    }
     
     return c.json({ success: true });
   } catch (error) {
