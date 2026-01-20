@@ -12,6 +12,8 @@ const MailboxPage: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { 
+    mailbox,
+    setMailbox,
     emails, 
     autoRefresh, 
     setAutoRefresh,
@@ -21,7 +23,6 @@ const MailboxPage: React.FC = () => {
     showErrorMessage
   } = useContext(MailboxContext);
   
-  const [mailbox, setMailbox] = useState<Mailbox | null>(null);
   const [selectedEmail, setSelectedEmail] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
