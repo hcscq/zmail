@@ -28,14 +28,26 @@ const CHUNK_SIZE = 500000; // 约500KB
  */
 export async function initializeDatabase(db: D1Database): Promise<void> {
   try {
-    // 使用 batch 方法批量执行 SQL 语句，这样更可靠
+    // 创建邮箱表（不包含 address_type，先创建基础表）
+    await db.prepare(`CREATE TABLE IF NOT EXISTS mailboxes (id TEXT PRIMARY KEY, address TEXT UNIQUE NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, ip_address TEXT, last_accessed INTEGER NOT NULL);`).run();
+    
+    // 检查 address_type 列是否存在，如果不存在则添加
+    try {
+      // 尝试查询 address_type 列
+      await db.prepare(`SELECT address_type FROM mailboxes LIMIT 1;`).first();
+      console.log('address_type 列已存在');
+    } catch (error) {
+      // 如果列不存在，添加列
+      console.log('address_type 列不存在，正在添加...');
+      await db.prepare(`ALTER TABLE mailboxes ADD COLUMN address_type TEXT NOT NULL DEFAULT 'random';`).run();
+      console.log('address_type 列添加成功');
+    }
+    
+    // Backfill existing rows with default address_type 'random' for compatibility
+    await db.prepare(`UPDATE mailboxes SET address_type = 'random' WHERE address_type IS NULL OR address_type = '';`).run();
+    
+    // 创建其他表和索引
     await db.batch([
-      // 创建邮箱表
-      db.prepare(`CREATE TABLE IF NOT EXISTS mailboxes (id TEXT PRIMARY KEY, address TEXT UNIQUE NOT NULL, address_type TEXT NOT NULL DEFAULT 'random', created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, ip_address TEXT, last_accessed INTEGER NOT NULL);`),
-      
-      // Backfill existing rows with default address_type 'random' for compatibility
-      db.prepare(`UPDATE mailboxes SET address_type = 'random' WHERE address_type IS NULL OR address_type = '';`),
-      
       // 创建邮件表
       db.prepare(`CREATE TABLE IF NOT EXISTS emails (id TEXT PRIMARY KEY, mailbox_id TEXT NOT NULL, from_address TEXT NOT NULL, from_name TEXT, to_address TEXT NOT NULL, subject TEXT, text_content TEXT, html_content TEXT, received_at INTEGER NOT NULL, has_attachments BOOLEAN DEFAULT FALSE, is_read BOOLEAN DEFAULT FALSE, FOREIGN KEY (mailbox_id) REFERENCES mailboxes(id) ON DELETE CASCADE);`),
       
